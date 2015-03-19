@@ -37,8 +37,8 @@ class WP_Query_Multisite extends WP_Query{
 		
 			add_filter('posts_request', array(&$this, 'create_and_unionize_select_statements') );
 			add_filter('posts_fields', array(&$this, 'add_site_ID_to_posts_fields') );
-			add_action('the_post', array(&$this, 'switch_to_blog_while_in_loop'));
-			add_action('loop_end', array(&$this, 'restore_current_blog_after_loop'));
+			add_action('the_post', array(&$this, 'blog_switcher_duties'));
+			add_action('loop_end', array(&$this, 'loop_end_duties'));
 			
 	}
 	function remove_filters() {
@@ -58,7 +58,7 @@ class WP_Query_Multisite extends WP_Query{
 
 		foreach ($this->sites_to_query as $key => $site_ID) :
 
-			$new_sql_select = str_replace($root_site_db_prefix, $wpdb->prefix, $sql);
+			$new_sql_select = str_replace($root_site_db_prefix, $wpdb->get_blog_prefix($site_ID), $sql);
 			$new_sql_select = preg_replace("/ LIMIT ([0-9]+), ".$posts_per_page."/", "", $new_sql_select);
 			$new_sql_select = str_replace("SQL_CALC_FOUND_ROWS ", "", $new_sql_select);
 			$new_sql_select = str_replace("# AS site_ID", "'$site_ID' AS site_ID", $new_sql_select);
@@ -71,7 +71,6 @@ class WP_Query_Multisite extends WP_Query{
 			}
 			
 			$new_sql_selects[] = $new_sql_select;
-			restore_current_blog();
 
 		endforeach;
 
@@ -93,16 +92,22 @@ class WP_Query_Multisite extends WP_Query{
 		return implode(', ', $sql_statements);
 	}
 	
-	function switch_to_blog_while_in_loop( $post ) {
+	function blog_switcher_duties( $post ) {
 		global $blog_id;
-		if($post->site_ID && $blog_id != $post->site_ID )
+		static $seeifdone=false;
+		if($post->site_ID && $blog_id != $post->site_ID ){
+			if( $seeifdone ) {
+				restore_current_blog();
+			}
 			switch_to_blog($post->site_ID);
-		else
-			restore_current_blog();
+			$seeifdone=true;
+		}
 	}
 
-	function restore_current_blog_after_loop() {
+	function loop_end_duties() {
 			restore_current_blog();
+			remove_action('the_post', array(&$this, 'blog_switcher_duties'));
+			remove_action('loop_end', array(&$this, 'loop_end_duties'));
 	}
 }
 
